@@ -1,0 +1,23 @@
+---
+- name: "Install K3s Agents (Worker Nodes)"
+  hosts: localhost
+  become: yes
+  vars:
+    k3s_server_url: "https://192.168.242.10:6443"
+    k3s_version: "v1.27.0"
+
+  tasks:
+    - name: "Read node token from shared folder"
+      slurp:
+        src: /vagrant/ansible/node-token
+      register: node_token
+
+    - name: "Download & install K3s agent using dynamic token"
+      shell: |
+        curl -sfL https://get.k3s.io | \
+        INSTALL_K3S_VERSION={{ k3s_version }} \
+        K3S_URL={{ k3s_server_url }} \
+        K3S_TOKEN={{ node_token.content | b64decode | trim }} \
+        sh -
+      args:
+        creates: /usr/local/bin/k3s-agent

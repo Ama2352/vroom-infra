@@ -1,0 +1,11 @@
+# Vagrant
+.vagrant/
+
+# K3s Credentials (Sensitive)
+ansible/k3s.yaml
+ansible/node-token
+
+# Logs & OS Files
+*.log
+.DS_Store
+Thumbs.db

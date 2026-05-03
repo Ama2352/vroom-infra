@@ -1,0 +1,51 @@
+---
+- name: "Install ArgoCD + Sealed Secrets on K3s"
+  hosts: localhost
+  become: yes
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+  tasks:
+    - name: "Install Helm"
+      shell: |
+        which helm || curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+    - name: "Add Helm repos"
+      shell: "{{ item }}"
+      loop:
+        - helm repo add bitnami https://charts.bitnami.com/bitnami
+        - helm repo add argoproj https://argoproj.github.io/argo-helm
+        - helm repo update
+
+    - name: "Create namespaces"
+      shell: |
+        kubectl create namespace sealed-secrets --dry-run=client -o yaml | kubectl apply -f -
+        kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: "Install Sealed Secrets"
+      shell: |
+        helm upgrade --install sealed-secrets bitnami/sealed-secrets \
+          --namespace sealed-secrets --wait --timeout 5m
+      ignore_errors: yes
+
+    - name: "Install ArgoCD"
+      shell: |
+        helm upgrade --install argocd argoproj/argo-cd \
+          --namespace argocd \
+          --set server.insecure=true \
+          --wait --timeout 5m
+      ignore_errors: yes
+
+    - name: "Get ArgoCD initial password"
+      shell: |
+        kubectl -n argocd get secret argocd-initial-admin-secret \
+          -o jsonpath="{.data.password}" | base64 -d
+      register: argocd_password
+
+    - name: "Show ArgoCD access info"
+      debug:
+        msg: |
+          ✓ ArgoCD ready!
+          Access: From Host, run `kubectl port-forward -n argocd svc/argocd-server 8080:443`
+          URL: http://localhost:8080
+          User: admin / Password: {{ argocd_password.stdout }}
