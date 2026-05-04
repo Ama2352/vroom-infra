@@ -69,3 +69,11 @@
           ---------------------------------------------------------------------
           Note: NodePort 30080 is used (aligned with ride-hail-platform).
           =====================================================================
+
+    - name: "Apply GitOps Root App (App of Apps)"
+      shell: |
+        kubectl apply -f https://gitlab.com/vroom-app/gitops/-/raw/main/root-app.yaml
+      register: root_app_result
+      until: root_app_result.rc == 0
+      retries: 5
+      delay: 10
