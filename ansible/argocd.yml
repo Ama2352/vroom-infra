@@ -1,11 +1,19 @@
 ---
-- name: "Install ArgoCD + Sealed Secrets on K3s"
-  hosts: localhost
+- name: "Bootstrap ArgoCD + Sealed Secrets on K3s"
+  hosts: all
+  connection: local
   become: yes
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
   tasks:
+    - name: "Wait for all nodes to be ready"
+      shell: "kubectl get nodes | grep ' Ready' | wc -l"
+      register: nodes_ready
+      until: nodes_ready.stdout|int >= 3
+      retries: 20
+      delay: 10
+
     - name: "Install Helm"
       shell: |
         which helm || curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -25,7 +33,7 @@
     - name: "Install Sealed Secrets"
       shell: |
         helm upgrade --install sealed-secrets bitnami/sealed-secrets \
-          --namespace sealed-secrets --wait --timeout 5m
+          --namespace sealed-secrets --wait --timeout 10m
       ignore_errors: yes
 
     - name: "Install ArgoCD"
@@ -33,8 +41,12 @@
         helm upgrade --install argocd argoproj/argo-cd \
           --namespace argocd \
           --set server.insecure=true \
-          --wait --timeout 5m
-      ignore_errors: yes
+          --wait --timeout 10m
+
+    - name: "Expose ArgoCD server as NodePort 30080"
+      shell: |
+        kubectl patch svc argocd-server -n argocd \
+          -p '{"spec":{"type":"NodePort","ports":[{"port":443,"targetPort":8080,"nodePort":30080}]}}'
 
     - name: "Get ArgoCD initial password"
       shell: |
@@ -45,7 +57,15 @@
     - name: "Show ArgoCD access info"
       debug:
         msg: |
-          ✓ ArgoCD ready!
-          Access: From Host, run `kubectl port-forward -n argocd svc/argocd-server 8080:443`
-          URL: http://localhost:8080
-          User: admin / Password: {{ argocd_password.stdout }}
+          
+          =====================================================================
+          🚀  ARGOCD BOOTSTRAP COMPLETE
+          =====================================================================
+          
+          🌍 URL:      https://192.168.242.10:30080
+          👤 User:     admin
+          🔑 Password: {{ argocd_password.stdout }}
+          
+          ---------------------------------------------------------------------
+          Note: NodePort 30080 is used (aligned with ride-hail-platform).
+          =====================================================================

@@ -1,0 +1,17 @@
+---
+- name: "Install K3s Agents (Worker Nodes)"
+  hosts: all
+  connection: local
+  become: yes
+
+  tasks:
+    - name: "Wait for join script to be available"
+      wait_for:
+        path: /vagrant/k3s-join-command.sh
+        state: present
+        timeout: 300
+
+    - name: "Join K3s cluster using shared script"
+      shell: bash /vagrant/k3s-join-command.sh
+      args:
+        creates: /usr/local/bin/k3s-agent

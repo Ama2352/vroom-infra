@@ -9,3 +9,5 @@ ansible/node-token
 *.log
 .DS_Store
 Thumbs.db
+
+k3s-join-command.sh

@@ -1,0 +1,55 @@
+---
+- name: "Install K3s Server (Control Plane)"
+  hosts: all
+  connection: local
+  become: yes
+  vars:
+    k3s_version: "v1.35.4+k3s1"
+
+  tasks:
+    - name: "Download & install K3s server (Auto-generated token)"
+      shell: |
+        curl -sfL https://get.k3s.io | \
+        INSTALL_K3S_VERSION={{ k3s_version }} \
+        sh -s - --write-kubeconfig-mode 644
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: "Wait for K3s API to be ready"
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: result
+      until: result.rc == 0
+      retries: 20
+      delay: 10
+      
+    - name: "Extract node token for agents"
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: server_token
+
+    - name: "Generate join command script"
+      copy:
+        content: |
+          #!/bin/bash
+          curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://192.168.242.10:6443 K3S_TOKEN={{ server_token.content | b64decode | trim }} sh -s -
+        dest: /vagrant/k3s-join-command.sh
+        mode: '0755'
+
+    - name: "Create .kube directory for vagrant user"
+      file:
+        path: /home/vagrant/.kube
+        state: directory
+        owner: vagrant
+        group: vagrant
+        mode: '0755'
+
+    - name: "Copy kubeconfig to vagrant user home"
+      copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /home/vagrant/.kube/config
+        remote_src: yes
+        owner: vagrant
+        group: vagrant
+        mode: '0600'
