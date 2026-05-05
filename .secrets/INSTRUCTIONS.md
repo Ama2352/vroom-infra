@@ -9,6 +9,14 @@ vagrant ssh k3s-server
 cd /vagrant
 ```
 
+### Step 1.5: Get the Public Certificate (If missing)
+
+The public certificate is required to encrypt secrets. If `.secrets/pub-cert.pem` does not exist, fetch it from the cluster:
+
+```bash
+kubeseal --fetch-cert --controller-name=sealed-secrets --controller-namespace=sealed-secrets > .secrets/pub-cert.pem
+```
+
 ### Step 2: Seal the secrets (Run inside the VM)
 
 We organize secrets by namespace to ensure they are sealed correctly.
@@ -30,9 +38,9 @@ kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/vroom-dev/notific
 
 ```bash
 # Mirrored secrets for Postgres initialization
-kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/user-db-secrets.yaml > .secrets/user-db-secrets.yaml
-kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/ride-db-secrets.yaml > .secrets/ride-db-secrets.yaml
-kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/notification-db-secrets.yaml > .secrets/notification-db-secrets.yaml
+kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/user-db-secrets.yaml > .secrets/platform-user-sealed.yaml
+kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/ride-db-secrets.yaml > .secrets/platform-ride-sealed.yaml
+kubeseal --cert .secrets/pub-cert.pem --format yaml < .secrets/platform/notification-db-secrets.yaml > .secrets/platform-notification-sealed.yaml
 ```
 
 ### Step 3: Move to GitOps (Run on Windows)

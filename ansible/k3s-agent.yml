@@ -5,6 +5,13 @@
   become: yes
 
   tasks:
+    - name: "Ensure DNS is robust (Force IPv4 nameservers)"
+      shell: |
+        rm -f /etc/resolv.conf
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+      changed_when: false
+
     - name: "Wait for join script to be available"
       wait_for:
         path: /vagrant/k3s-join-command.sh

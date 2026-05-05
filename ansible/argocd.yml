@@ -7,11 +7,18 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
   tasks:
+    - name: "Ensure DNS is robust (Force IPv4 nameservers)"
+      shell: |
+        rm -f /etc/resolv.conf
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+      changed_when: false
+
     - name: "Wait for all nodes to be ready"
       shell: "kubectl get nodes --no-headers | grep ' Ready' | wc -l"
       register: nodes_ready
       until: nodes_ready.stdout|int >= 3
-      retries: 20
+      retries: 30
       delay: 10
       changed_when: false
 
@@ -24,13 +31,17 @@
     - name: "Add Helm repos"
       shell: "helm repo add {{ item.name }} {{ item.url }}"
       register: repo_add
-      changed_when: "'has been added' in repo_add.stdout or 'successfully' in repo_add.stdout"
+      changed_when: "'has been added' in repo_add.stdout"
       loop:
-        - { name: 'bitnami', url: 'https://charts.bitnami.com/bitnami' }
-        - { name: 'argoproj', url: 'https://argoproj.github.io/argo-helm' }
+        - { name: "bitnami", url: "https://charts.bitnami.com/bitnami" }
+        - { name: "argoproj", url: "https://argoproj.github.io/argo-helm" }
 
     - name: "Update Helm repositories"
       shell: "helm repo update"
+      register: repo_update
+      until: repo_update.rc == 0
+      retries: 5
+      delay: 10
       changed_when: false
 
     - name: "Create namespaces"
@@ -42,21 +53,36 @@
         - sealed-secrets
         - argocd
 
-    - name: "Install Sealed Secrets"
+    - name: "Install Sealed Secrets Controller"
       shell: |
         helm upgrade --install sealed-secrets bitnami/sealed-secrets \
           --namespace sealed-secrets --wait --timeout 10m
       register: sealed_secrets_install
+      until: sealed_secrets_install.rc == 0
+      retries: 3
+      delay: 15
       changed_when: "'upgraded' in sealed_secrets_install.stdout or 'installed' in sealed_secrets_install.stdout"
-      ignore_errors: yes
+
+    - name: "Install Kubeseal CLI"
+      shell: |
+        VERSION="0.27.0"
+        curl -L "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${VERSION}/kubeseal-${VERSION}-linux-amd64.tar.gz" | tar -xz -C /usr/local/bin/ kubeseal
+        chmod +x /usr/local/bin/kubeseal
+      args:
+        creates: /usr/local/bin/kubeseal
 
     - name: "Install ArgoCD"
       shell: |
         helm upgrade --install argocd argoproj/argo-cd \
           --namespace argocd \
           --set server.insecure=true \
+          --set configs.params."server.basehref"=/argocd \
+          --set configs.params."server.rootpath"=/argocd \
           --wait --timeout 10m
       register: argocd_install
+      until: argocd_install.rc == 0
+      retries: 3
+      delay: 15
       changed_when: "'upgraded' in argocd_install.stdout or 'installed' in argocd_install.stdout"
 
     - name: "Expose ArgoCD server as NodePort 30080"
@@ -64,7 +90,15 @@
         kubectl patch svc argocd-server -n argocd \
           -p '{"spec":{"type":"NodePort","ports":[{"port":443,"targetPort":8080,"nodePort":30080}]}}'
       register: patch_result
-      changed_when: "'patched' in patch_result.stdout"
+      changed_when: "'patched' in patch_result.stdout and '(no changes)' not in patch_result.stdout"
+
+    - name: "Wait for ArgoCD initial secret"
+      shell: "kubectl -n argocd get secret argocd-initial-admin-secret"
+      register: secret_check
+      until: secret_check.rc == 0
+      retries: 12
+      delay: 10
+      changed_when: false
 
     - name: "Get ArgoCD initial password"
       shell: |
@@ -91,6 +125,6 @@
         kubectl apply -f https://raw.githubusercontent.com/Ama2352/vroom-gitops/main/root-app.yaml
       register: root_app_result
       until: root_app_result.rc == 0
-      retries: 5
-      delay: 10
+      retries: 10
+      delay: 15
       changed_when: "'created' in root_app_result.stdout or 'configured' in root_app_result.stdout"

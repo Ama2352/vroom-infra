@@ -7,6 +7,13 @@
     k3s_version: "v1.35.4+k3s1"
 
   tasks:
+    - name: "Ensure DNS is robust (Force IPv4 nameservers)"
+      shell: |
+        rm -f /etc/resolv.conf
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+      changed_when: false
+
     - name: "Download & install K3s server"
       shell: |
         curl -sfL https://get.k3s.io | \

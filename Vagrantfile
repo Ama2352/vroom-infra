@@ -41,7 +41,7 @@ Vagrant.configure("2") do |config|
 
     # Phase 2: ArgoCD bootstrap (triggered by agents)
     server.vm.provision "argocd", run: "never", type: "ansible_local" do |ansible|
-      ansible.playbook = "ansible/argocd.yml"
+      ansible.playbook = "/vagrant/ansible/argocd.yml"
       ansible.install_mode = "none"
     end
   end
