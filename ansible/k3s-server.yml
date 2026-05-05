@@ -7,7 +7,7 @@
     k3s_version: "v1.35.4+k3s1"
 
   tasks:
-    - name: "Download & install K3s server (Auto-generated token)"
+    - name: "Download & install K3s server"
       shell: |
         curl -sfL https://get.k3s.io | \
         INSTALL_K3S_VERSION={{ k3s_version }} \
@@ -23,6 +23,7 @@
       until: result.rc == 0
       retries: 20
       delay: 10
+      changed_when: false
       
     - name: "Extract node token for agents"
       slurp:

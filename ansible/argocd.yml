@@ -8,32 +8,46 @@
 
   tasks:
     - name: "Wait for all nodes to be ready"
-      shell: "kubectl get nodes | grep ' Ready' | wc -l"
+      shell: "kubectl get nodes --no-headers | grep ' Ready' | wc -l"
       register: nodes_ready
       until: nodes_ready.stdout|int >= 3
       retries: 20
       delay: 10
+      changed_when: false
 
     - name: "Install Helm"
       shell: |
-        which helm || curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
 
     - name: "Add Helm repos"
-      shell: "{{ item }}"
+      shell: "helm repo add {{ item.name }} {{ item.url }}"
+      register: repo_add
+      changed_when: "'has been added' in repo_add.stdout or 'successfully' in repo_add.stdout"
       loop:
-        - helm repo add bitnami https://charts.bitnami.com/bitnami
-        - helm repo add argoproj https://argoproj.github.io/argo-helm
-        - helm repo update
+        - { name: 'bitnami', url: 'https://charts.bitnami.com/bitnami' }
+        - { name: 'argoproj', url: 'https://argoproj.github.io/argo-helm' }
+
+    - name: "Update Helm repositories"
+      shell: "helm repo update"
+      changed_when: false
 
     - name: "Create namespaces"
       shell: |
-        kubectl create namespace sealed-secrets --dry-run=client -o yaml | kubectl apply -f -
-        kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+        kubectl create namespace {{ item }} --dry-run=client -o yaml | kubectl apply -f -
+      register: ns_create
+      changed_when: "'created' in ns_create.stdout"
+      loop:
+        - sealed-secrets
+        - argocd
 
     - name: "Install Sealed Secrets"
       shell: |
         helm upgrade --install sealed-secrets bitnami/sealed-secrets \
           --namespace sealed-secrets --wait --timeout 10m
+      register: sealed_secrets_install
+      changed_when: "'upgraded' in sealed_secrets_install.stdout or 'installed' in sealed_secrets_install.stdout"
       ignore_errors: yes
 
     - name: "Install ArgoCD"
@@ -42,17 +56,22 @@
           --namespace argocd \
           --set server.insecure=true \
           --wait --timeout 10m
+      register: argocd_install
+      changed_when: "'upgraded' in argocd_install.stdout or 'installed' in argocd_install.stdout"
 
     - name: "Expose ArgoCD server as NodePort 30080"
       shell: |
         kubectl patch svc argocd-server -n argocd \
           -p '{"spec":{"type":"NodePort","ports":[{"port":443,"targetPort":8080,"nodePort":30080}]}}'
+      register: patch_result
+      changed_when: "'patched' in patch_result.stdout"
 
     - name: "Get ArgoCD initial password"
       shell: |
         kubectl -n argocd get secret argocd-initial-admin-secret \
           -o jsonpath="{.data.password}" | base64 -d
       register: argocd_password
+      changed_when: false
 
     - name: "Show ArgoCD access info"
       debug:
@@ -74,3 +93,4 @@
       until: root_app_result.rc == 0
       retries: 5
       delay: 10
+      changed_when: "'created' in root_app_result.stdout or 'configured' in root_app_result.stdout"
