@@ -12,5 +12,4 @@ Thumbs.db
 
 k3s-join-command.sh
 
-.secrets/**.secret.yaml
-.secrets/pub-cert.pem
+.secrets/
