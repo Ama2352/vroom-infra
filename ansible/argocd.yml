@@ -128,3 +128,42 @@
       retries: 10
       delay: 15
       changed_when: "'created' in root_app_result.stdout or 'configured' in root_app_result.stdout"
+
+    # ── Kargo CRD Bootstrap ──────────────────────────────────────────────────
+    # Kargo stores CRDs in resources/crds/ (non-standard Helm path), so ArgoCD
+    # never installs them automatically. We wait for the Kargo controller
+    # Deployment to appear (meaning the Helm chart synced), then apply CRDs
+    # manually. This runs idempotently on every vagrant up.
+
+    - name: "Wait for AnalysisTemplate CRD (installed by argo-rollouts chart)"
+      shell: |
+        kubectl get crd analysistemplates.argoproj.io
+      register: at_crd
+      until: at_crd.rc == 0
+      retries: 45
+      delay: 20
+      changed_when: false
+
+    - name: "Wait for ArgoCD to deploy Kargo Helm chart"
+      shell: |
+        kubectl get deploy kargo-controller -n vroom-kargo 2>/dev/null
+      register: kargo_deploy
+      until: kargo_deploy.rc == 0
+      retries: 45
+      delay: 20
+      changed_when: false
+
+    - name: "Bootstrap Kargo CRDs from non-standard Helm chart location"
+      shell: |
+        KARGO_VERSION="1.10.3"
+        helm pull oci://ghcr.io/akuity/kargo-charts/kargo \
+          --version "${KARGO_VERSION}" \
+          --untar --untardir /tmp/kargo-crd
+        kubectl apply --server-side --force-conflicts \
+          -f /tmp/kargo-crd/kargo/resources/crds/
+        rm -rf /tmp/kargo-crd
+      changed_when: true
+
+    # ── Sealed Secrets Automation ────────────────────────────────────────────
+    - name: "Seal all secrets automatically"
+      ansible.builtin.import_tasks: seal-secrets.yml
