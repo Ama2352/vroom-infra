@@ -52,6 +52,12 @@ $mappings = @(
     @{ Src = "infrastructure\observability\metrics\alertmanager-slack-secret.yaml"; Dst = "infrastructure\observability\metrics\alertmanager-slack-secret.yaml" }
     @{ Src = "infrastructure\kargo\secrets\kargo-admin-password.yaml";           Dst = "infrastructure\kargo\secrets\kargo-admin-password.yaml" }
     @{ Src = "kargo\secrets\ai-reporter-secret.yaml";                            Dst = "kargo\secrets\ai-reporter-secret.yaml" }
+    @{ Src = "kargo\secrets\gitops-git-creds.yaml";                            Dst = "kargo\secrets\gitops-git-creds.yaml" }
+    @{ Src = "kargo\secrets\dockerhub-creds.yaml";                            Dst = "kargo\secrets\dockerhub-creds.yaml" }
+    @{ Src = "apps\vroom-dev\secrets\dockerhub-pull-secret.yaml";             Dst = "infrastructure\image-pull-secrets\vroom-dev\dockerhub-pull-secret.yaml" }
+    @{ Src = "apps\vroom-staging\secrets\dockerhub-pull-secret.yaml";         Dst = "infrastructure\image-pull-secrets\vroom-staging\dockerhub-pull-secret.yaml" }
+    @{ Src = "apps\vroom-prod\secrets\dockerhub-pull-secret.yaml";            Dst = "infrastructure\image-pull-secrets\vroom-prod\dockerhub-pull-secret.yaml" }
+    @{ Src = "apps\monitoring\secrets\dockerhub-pull-secret.yaml";            Dst = "infrastructure\image-pull-secrets\monitoring\dockerhub-pull-secret.yaml" }
 )
 
 # ── Copy files ────────────────────────────────────────────────────────────
@@ -87,7 +93,8 @@ try {
              apps/notification/overlays/ `
              apps/ai-reporter/secrets/ `
              infrastructure/postgres/secrets/ `
-             "infrastructure/observability/metrics/alertmanager-slack-secret.yaml" `
+             infrastructure/image-pull-secrets/ `
+             infrastructure/observability/metrics/alertmanager-slack-secret.yaml `
              infrastructure/kargo/secrets/ `
              kargo/secrets/
 

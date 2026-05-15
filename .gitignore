@@ -13,3 +13,4 @@ Thumbs.db
 k3s-join-command.sh
 
 .secrets/
+.notes/

@@ -23,7 +23,7 @@ Vagrant.configure("2") do |config|
     v.gui = false
     v.linked_clone = true
     v.allowlist_verified = true
-    v.vmx["memsize"]  = "4096"
+    v.vmx["memsize"]  = "3584"
     v.vmx["numvcpus"] = "2"
   end
 

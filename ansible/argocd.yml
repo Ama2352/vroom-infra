@@ -163,7 +163,3 @@
           -f /tmp/kargo-crd/kargo/resources/crds/
         rm -rf /tmp/kargo-crd
       changed_when: true
-
-    # ── Sealed Secrets Automation ────────────────────────────────────────────
-    - name: "Seal all secrets automatically"
-      ansible.builtin.import_tasks: seal-secrets.yml
