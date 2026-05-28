@@ -1,19 +1,20 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Copies sealed secrets produced by seal-secrets.yml into vroom-gitops,
-  then commits and pushes to GitHub so ArgoCD can sync them.
+  Fallback script: copies sealed secrets from .secrets/sealed/ to vroom-gitops/secrets/
+  and pushes to GitHub. Use this if the Ansible git push inside the VM failed.
 
 .DESCRIPTION
-  Run this once after every `vagrant up` from the vroom-infra directory:
+  The primary sealing workflow is fully automated via ansible/seal-secrets.yml.
+  Run this script only if you need to re-sync sealed files manually:
     cd vroom-infra
     .\scripts\apply-sealed-secrets.ps1
 
   Prerequisites:
-    - vagrant up has completed (argocd.yml ran and produced .secrets/sealed/)
+    - seal-secrets.yml (Ansible) has run and produced files in .secrets/sealed/
     - vroom-gitops is cloned at the sibling path ../vroom-gitops
     - Git is on your PATH
-    - Either GITHUB_GITOPS_TOKEN env var is set, or you will be prompted
+    - GITHUB_GITOPS_TOKEN env var is set
 #>
 
 Set-StrictMode -Version Latest
@@ -23,80 +24,65 @@ $infraRoot  = $PSScriptRoot | Split-Path -Parent   # vroom-infra/
 $sealedRoot = Join-Path $infraRoot ".secrets\sealed"
 $gitopsRoot = Join-Path $infraRoot "..\vroom-gitops"
 
-# ── Validate preconditions ─────────────────────────────────────────────────
-
 if (-not (Test-Path $sealedRoot)) {
-    Write-Error "Sealed secrets not found at $sealedRoot. Run 'vagrant up' first."
+    Write-Error "Sealed secrets not found at $sealedRoot. Run vagrant provision --provision-with seal-secrets.yml first."
 }
-
 if (-not (Test-Path $gitopsRoot)) {
     Write-Error "vroom-gitops not found at $gitopsRoot. Clone it alongside vroom-infra."
 }
 
-# ── Mapping: sealed path → vroom-gitops destination ──────────────────────
+# ── Mapping: namespace/name pairs to copy ────────────────────────────────
+# Structure mirrors: .secrets/sealed/<namespace>/<name>.yaml → secrets/<namespace>/<name>.yaml
 
-$mappings = @(
-    @{ Src = "apps\user\overlays\dev\secrets\user-db-secrets.yaml";              Dst = "apps\user\overlays\dev\secrets\user-db-secrets.yaml" }
-    @{ Src = "apps\ride\overlays\dev\secrets\ride-db-secrets.yaml";              Dst = "apps\ride\overlays\dev\secrets\ride-db-secrets.yaml" }
-    @{ Src = "apps\notification\overlays\dev\secrets\notification-db-secrets.yaml"; Dst = "apps\notification\overlays\dev\secrets\notification-db-secrets.yaml" }
-    @{ Src = "apps\user\overlays\staging\secrets\user-db-secrets.yaml";          Dst = "apps\user\overlays\staging\secrets\user-db-secrets.yaml" }
-    @{ Src = "apps\ride\overlays\staging\secrets\ride-db-secrets.yaml";          Dst = "apps\ride\overlays\staging\secrets\ride-db-secrets.yaml" }
-    @{ Src = "apps\notification\overlays\staging\secrets\notification-db-secrets.yaml"; Dst = "apps\notification\overlays\staging\secrets\notification-db-secrets.yaml" }
-    @{ Src = "apps\user\overlays\prod\secrets\user-db-secrets.yaml";             Dst = "apps\user\overlays\prod\secrets\user-db-secrets.yaml" }
-    @{ Src = "apps\ride\overlays\prod\secrets\ride-db-secrets.yaml";             Dst = "apps\ride\overlays\prod\secrets\ride-db-secrets.yaml" }
-    @{ Src = "apps\notification\overlays\prod\secrets\notification-db-secrets.yaml"; Dst = "apps\notification\overlays\prod\secrets\notification-db-secrets.yaml" }
-    @{ Src = "apps\ai-reporter\secrets\ai-reporter-secret.yaml";                 Dst = "apps\ai-reporter\secrets\ai-reporter-secret.yaml" }
-    @{ Src = "infrastructure\postgres\secrets\user-db-secrets.yaml";             Dst = "infrastructure\postgres\secrets\user-db-secrets.yaml" }
-    @{ Src = "infrastructure\postgres\secrets\ride-db-secrets.yaml";             Dst = "infrastructure\postgres\secrets\ride-db-secrets.yaml" }
-    @{ Src = "infrastructure\postgres\secrets\notification-db-secrets.yaml";     Dst = "infrastructure\postgres\secrets\notification-db-secrets.yaml" }
-    @{ Src = "infrastructure\observability\metrics\alertmanager-slack-secret.yaml"; Dst = "infrastructure\observability\metrics\alertmanager-slack-secret.yaml" }
-    @{ Src = "infrastructure\kargo\secrets\kargo-admin-password.yaml";           Dst = "infrastructure\kargo\secrets\kargo-admin-password.yaml" }
-    @{ Src = "kargo\secrets\ai-reporter-secret.yaml";                            Dst = "kargo\secrets\ai-reporter-secret.yaml" }
-    @{ Src = "kargo\secrets\gitops-git-creds.yaml";                            Dst = "kargo\secrets\gitops-git-creds.yaml" }
-    @{ Src = "kargo\secrets\dockerhub-creds.yaml";                            Dst = "kargo\secrets\dockerhub-creds.yaml" }
-    @{ Src = "apps\vroom-dev\secrets\dockerhub-pull-secret.yaml";             Dst = "infrastructure\image-pull-secrets\vroom-dev\dockerhub-pull-secret.yaml" }
-    @{ Src = "apps\vroom-staging\secrets\dockerhub-pull-secret.yaml";         Dst = "infrastructure\image-pull-secrets\vroom-staging\dockerhub-pull-secret.yaml" }
-    @{ Src = "apps\vroom-prod\secrets\dockerhub-pull-secret.yaml";            Dst = "infrastructure\image-pull-secrets\vroom-prod\dockerhub-pull-secret.yaml" }
-    @{ Src = "apps\monitoring\secrets\dockerhub-pull-secret.yaml";            Dst = "infrastructure\image-pull-secrets\monitoring\dockerhub-pull-secret.yaml" }
-)
+$namespaces = @("vroom-dev", "vroom-staging", "vroom-prod", "platform", "monitoring", "vroom-kargo", "vroom")
 
-# ── Copy files ────────────────────────────────────────────────────────────
+Write-Host "`nCopying sealed secrets to vroom-gitops/secrets/..." -ForegroundColor Cyan
 
-Write-Host "`nCopying sealed secrets to vroom-gitops..." -ForegroundColor Cyan
+$copied = 0
+foreach ($ns in $namespaces) {
+    $srcDir = Join-Path $sealedRoot $ns
+    $dstDir = Join-Path $gitopsRoot "secrets\$ns"
 
-foreach ($m in $mappings) {
-    $src = Join-Path $sealedRoot $m.Src
-    $dst = Join-Path $gitopsRoot $m.Dst
-
-    if (-not (Test-Path $src)) {
-        Write-Warning "  SKIP (not found): $($m.Src)"
+    if (-not (Test-Path $srcDir)) {
+        Write-Host "  SKIP (dir not found): $ns/" -ForegroundColor DarkYellow
         continue
     }
 
-    $dstDir = Split-Path $dst -Parent
     if (-not (Test-Path $dstDir)) {
         New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
     }
 
-    Copy-Item -Path $src -Destination $dst -Force
-    Write-Host "  OK  $($m.Dst)" -ForegroundColor Green
+    foreach ($file in (Get-ChildItem $srcDir -Filter "*.yaml")) {
+        $dst = Join-Path $dstDir $file.Name
+        Copy-Item -Path $file.FullName -Destination $dst -Force
+        Write-Host "  OK   $ns/$($file.Name)" -ForegroundColor Green
+        $copied++
+    }
 }
 
-# ── Commit and push ───────────────────────────────────────────────────────
+if ($copied -eq 0) {
+    Write-Host "`nNo sealed secrets found — nothing to commit." -ForegroundColor Yellow
+    exit 0
+}
 
-Write-Host "`nCommitting sealed secrets to vroom-gitops..." -ForegroundColor Cyan
+# ── Enable placeholders in kustomization if sealed files now exist ────────
+$kustomizationPath = Join-Path $gitopsRoot "secrets\kustomization.yaml"
+$kustomContent = Get-Content $kustomizationPath -Raw
+$placeholders = @("vroom/ghcr-creds.yaml", "monitoring/n8n-sealed-secret.yaml", "monitoring/kubectl-executor-secret.yaml")
+foreach ($p in $placeholders) {
+    $sealedPath = Join-Path $sealedRoot ($p -replace "/", "\")
+    if (Test-Path $sealedPath) {
+        $kustomContent = $kustomContent -replace "  # - $([regex]::Escape($p))", "  - $p"
+    }
+}
+Set-Content -Path $kustomizationPath -Value $kustomContent -NoNewline
+
+# ── Commit and push ───────────────────────────────────────────────────────
+Write-Host "`nCommitting to vroom-gitops..." -ForegroundColor Cyan
 
 Push-Location $gitopsRoot
 try {
-    git add apps/user/overlays/ `
-             apps/ride/overlays/ `
-             apps/notification/overlays/ `
-             apps/ai-reporter/secrets/ `
-             infrastructure/postgres/secrets/ `
-             infrastructure/image-pull-secrets/ `
-             infrastructure/observability/metrics/alertmanager-slack-secret.yaml `
-             infrastructure/kargo/secrets/ `
-             kargo/secrets/
+    git add secrets/
 
     $status = git status --porcelain
     if (-not $status) {
@@ -106,11 +92,9 @@ try {
 
     git commit -m "chore: re-seal secrets after cluster recreation"
 
-    # Push using GITHUB_GITOPS_TOKEN if available, otherwise rely on stored credentials
     $token = $env:GITHUB_GITOPS_TOKEN
     if ($token) {
         $remote = git remote get-url origin
-        # Inject token into HTTPS remote URL
         $authedRemote = $remote -replace "https://", "https://$token@"
         git push $authedRemote HEAD:main
     } else {
@@ -118,7 +102,7 @@ try {
         git push origin HEAD:main
     }
 
-    Write-Host "`nDone. ArgoCD will auto-sync the sealed secrets within ~3 minutes." -ForegroundColor Green
+    Write-Host "`nDone. ArgoCD will auto-sync secrets within ~3 minutes." -ForegroundColor Green
 }
 finally {
     Pop-Location
