@@ -35,13 +35,13 @@ Vagrant.configure("2") do |config|
     
     # Phase 1: Install K3s Server and generate join script
     server.vm.provision "ansible_local" do |ansible|
-      ansible.playbook = "ansible/k3s-server.yml"
+      ansible.playbook = "ansible/playbooks/k3s-server.yml"
       ansible.install_mode = "none"
     end
 
     # Phase 2: ArgoCD bootstrap (triggered by agents)
     server.vm.provision "argocd", run: "never", type: "ansible_local" do |ansible|
-      ansible.playbook = "/vagrant/ansible/argocd.yml"
+      ansible.playbook = "/vagrant/ansible/playbooks/argocd.yml"
       ansible.install_mode = "none"
     end
   end
@@ -55,7 +55,7 @@ Vagrant.configure("2") do |config|
 
       # Join cluster using Ansible (which waits for the script)
       agent.vm.provision "ansible_local" do |ansible|
-        ansible.playbook = "ansible/k3s-agent.yml"
+        ansible.playbook = "ansible/playbooks/k3s-agent.yml"
         ansible.install_mode = "none"
       end
       

@@ -1,60 +1,90 @@
-# Vroom Infrastructure: 3-Node K3s Cluster
+# vroom-infra
 
-This repository contains the Infrastructure-as-Code (IaC) required to provision and configure the private cloud environment for the **Vroom** platform.
+Vagrant + Ansible provisioning for the **Vroom** K3s cluster. Spins up 3 VMs and installs a fully configured K3s cluster with ArgoCD bootstrapped.
 
-## 📐 Architecture
+Part of a three-repo setup:
+- [vroom-services](https://github.com/Ama2352/vroom-services) — application source + CI
+- [vroom-gitops](https://github.com/Ama2352/vroom-gitops) — delivery manifests
+- **vroom-infra** (this repo) — cluster provisioning
 
-The infrastructure is designed to run on a local VMware hypervisor, optimized for high-density microservices.
+---
 
-- **3 Nodes**: `k3s-server`, `k3s-agent-1`, `k3s-agent-2`.
-- **Resources**: Each node is allocated **3.5GB RAM** (3584 MB) and **2 vCPUs**.
+## Cluster Topology
 
-## 🛠️ Tech Stack
+| VM | Role | IP | RAM |
+|----|------|----|-----|
+| `k3s-server` | Control plane + workloads | 192.168.25.133 | 3.5 GB |
+| `k3s-agent-1` | Worker | 192.168.25.134 | 3.5 GB |
+| `k3s-agent-2` | Worker | 192.168.25.135 | 3.5 GB |
 
-- **Vagrant**: Virtual machine orchestration.
-- **Ansible**: Configuration management and cluster bootstrapping.
-- **K3s**: Lightweight Kubernetes distribution.
-- **Sealed Secrets**: Secure secret management for GitOps.
+**Total: 10.5 GB RAM** — hard constraint driving all platform sizing decisions.
 
-## 🚀 Quick Start
+---
 
-### 1. Prepare Secrets
+## Repository Layout
 
-Before provisioning, you must provide the raw secrets.
+```
+vroom-infra/
+├── Vagrantfile             VM definitions (VMware Desktop provider)
+├── ansible/
+│   ├── playbooks/          Ansible playbooks
+│   │   ├── k3s-server.yml  Install K3s server, generate join script
+│   │   ├── k3s-agent.yml   Join agents to cluster
+│   │   ├── argocd.yml      Bootstrap ArgoCD + apply root-app
+│   │   └── seal-secrets.yml  Seal and push SealedSecrets to vroom-gitops
+│   ├── templates/          Jinja2 templates (db-secret.j2)
+│   └── vars/
+│       └── secrets.yml.example  Fill in plaintext values before sealing
+├── scripts/
+│   ├── apply-sealed-secrets.ps1  Windows fallback — apply secrets without re-sealing
+│   └── setup-ngrok.sh            Expose cluster port for external testing
+├── secrets/
+│   └── raw-template.yaml   Reference template for new SealedSecret entries
+└── docs/
+    └── KARGO_CLI_GUIDE.md  Kargo CLI installation and usage reference
+```
 
-- Create a `.secrets/` directory in the root of this repo.
-- Populate it with the necessary credential files (refer to the `secrets/` template directory for required files).
-- These will be automatically encrypted into **SealedSecrets** during the provisioning phase.
+---
 
-### 2. Provision Cluster
-
-Run the following command. Vagrant will automatically provision the VMs and execute the Ansible playbooks to setup K3s, ArgoCD, Kargo, and deploy the root applications.
+## Provision the cluster
 
 ```bash
+# 1. Start all VMs (Vagrant provisions k3s-server and agents automatically)
 vagrant up
-```
 
-### 3. Apply Sealed Secrets
+# 2. Ansible runs inside each VM (not from the Windows host).
+#    If you need to re-run a playbook manually:
+vagrant ssh k3s-server
+ansible-playbook /vagrant/ansible/playbooks/k3s-server.yml --connection=local
+ansible-playbook /vagrant/ansible/playbooks/argocd.yml --connection=local
 
-Once `vagrant up` completes, you need to move the newly generated sealed secrets to your GitOps repository:
+vagrant ssh k3s-agent-1 -c "ansible-playbook /vagrant/ansible/playbooks/k3s-agent.yml --connection=local"
+vagrant ssh k3s-agent-2 -c "ansible-playbook /vagrant/ansible/playbooks/k3s-agent.yml --connection=local"
 
-```powershell
-# Ensure vroom-gitops is cloned in the same workspace folder
-.\scripts\apply-sealed-secrets.ps1
-```
-
-This script automates the process of copying the encrypted secrets to `vroom-gitops`, committing them, and pushing them to GitHub for ArgoCD to synchronize.
-
-### 4. Accessing the Cluster
-
-Extract the kubeconfig to your host:
-
-```bash
-$env:KUBECONFIG = "$(Get-Location)\ansible\k3s.yaml"
+# 3. Access cluster from Windows host
+export KUBECONFIG=$(pwd)/ansible/k3s.yaml
 kubectl get nodes
 ```
 
-## 🔗 Related Repositories
+---
 
-- **[vroom-services](https://github.com/Ama2352/vroom-services)**: Application code and CI.
-- **[vroom-gitops](https://github.com/Ama2352/vroom-gitops)**: The GitOps "Source of Truth".
+## Seal secrets
+
+Fill in `ansible/vars/secrets.yml` (gitignored), then:
+
+```bash
+vagrant provision --provision-with seal-secrets.yml
+```
+
+Or use the Windows PowerShell fallback to apply pre-sealed secrets directly:
+
+```powershell
+./scripts/apply-sealed-secrets.ps1
+```
+
+---
+
+## Documentation
+
+- [Kargo CLI reference](docs/KARGO_CLI_GUIDE.md)
+- [Provisioning walkthrough](docs/provisioning.md)

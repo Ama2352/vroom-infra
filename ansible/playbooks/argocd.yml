@@ -1,6 +1,6 @@
 ---
 - name: "Bootstrap ArgoCD + Sealed Secrets on K3s"
-  hosts: all
+  hosts: k3s-server
   connection: local
   become: yes
   environment:
