@@ -33,8 +33,8 @@
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
       loop:
-        - { name: "bitnami", url: "https://charts.bitnami.com/bitnami" }
-        - { name: "argoproj", url: "https://argoproj.github.io/argo-helm" }
+        - { name: "bitnami",   url: "https://charts.bitnami.com/bitnami" }
+        - { name: "argoproj",  url: "https://argoproj.github.io/argo-helm" }
 
     - name: "Update Helm repositories"
       shell: "helm repo update"
@@ -148,40 +148,14 @@
           - ""
           - "====================================================================="
 
-    - name: "Apply GitOps Root App (App of Apps)"
-      shell: |
-        kubectl apply -f https://raw.githubusercontent.com/Ama2352/vroom-gitops/main/root-app.yaml
-      register: root_app_result
-      until: root_app_result.rc == 0
-      retries: 10
-      delay: 15
-      changed_when: "'created' in root_app_result.stdout or 'configured' in root_app_result.stdout"
-
     # ── Kargo CRD Bootstrap ──────────────────────────────────────────────────
     # Kargo stores CRDs in resources/crds/ (non-standard Helm path), so ArgoCD
-    # never installs them automatically. We wait for the Kargo controller
-    # Deployment to appear (meaning the Helm chart synced), then apply CRDs
-    # manually. This runs idempotently on every vagrant up.
+    # never installs them automatically. We pre-install them HERE — before the
+    # root app is applied — so that ArgoCD can sync vroom-kargo-resources
+    # (AnalysisTemplate, Stage, Warehouse) on the first pass without "no matches
+    # for kind AnalysisTemplate" errors. Runs idempotently on every vagrant up.
 
-    - name: "Wait for AnalysisTemplate CRD (installed by argo-rollouts chart)"
-      shell: |
-        kubectl get crd analysistemplates.argoproj.io
-      register: at_crd
-      until: at_crd.rc == 0
-      retries: 45
-      delay: 20
-      changed_when: false
-
-    - name: "Wait for ArgoCD to deploy Kargo Helm chart"
-      shell: |
-        kubectl get deploy kargo-controller -n vroom-kargo 2>/dev/null
-      register: kargo_deploy
-      until: kargo_deploy.rc == 0
-      retries: 45
-      delay: 20
-      changed_when: false
-
-    - name: "Bootstrap Kargo CRDs from non-standard Helm chart location"
+    - name: "Bootstrap Kargo CRDs before root app (pre-requisite for vroom-kargo-resources sync)"
       shell: |
         KARGO_VERSION="1.10.3"
         helm pull oci://ghcr.io/akuity/kargo-charts/kargo \
@@ -191,3 +165,12 @@
           -f /tmp/kargo-crd/kargo/resources/crds/
         rm -rf /tmp/kargo-crd
       changed_when: true
+
+    - name: "Apply GitOps Root App (App of Apps)"
+      shell: |
+        kubectl apply -f https://raw.githubusercontent.com/Ama2352/vroom-gitops/main/root-app.yaml
+      register: root_app_result
+      until: root_app_result.rc == 0
+      retries: 10
+      delay: 15
+      changed_when: "'created' in root_app_result.stdout or 'configured' in root_app_result.stdout"
