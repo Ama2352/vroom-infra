@@ -166,6 +166,32 @@
         rm -rf /tmp/kargo-crd
       changed_when: true
 
+    # Kargo v1.10.3 does NOT bundle Argo Rollouts CRDs — they live in the
+    # non-standard resources/crds/ path which only contains Kargo's own CRDs.
+    # AnalysisTemplate / AnalysisRun (argoproj.io/v1alpha1) must be installed
+    # separately. The argoproj Helm repo is already added above, so we pull
+    # the argo-rollouts chart just for its crds/ directory (no controller pod).
+    - name: "Bootstrap Argo Rollouts CRDs (for Kargo Stage verification)"
+      shell: |
+        helm pull argoproj/argo-rollouts \
+          --untar --untardir /tmp/argo-rollouts-crd
+        kubectl apply --server-side --force-conflicts \
+          -f /tmp/argo-rollouts-crd/argo-rollouts/crds/
+        rm -rf /tmp/argo-rollouts-crd
+      changed_when: true
+
+    # Kargo's Project admission webhook rejects a Project whose namespace already
+    # exists without the kargo.akuity.io/project label. ArgoCD's CreateNamespace=true
+    # creates the vroom namespace before Kargo can claim it, causing a chicken-and-egg.
+    # Pre-creating it with the label here means Kargo finds it already labelled.
+    - name: "Pre-create vroom namespace with Kargo project label"
+      shell: |
+        kubectl create namespace vroom --dry-run=client -o yaml | kubectl apply -f -
+        kubectl label namespace vroom kargo.akuity.io/project=true --overwrite
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     - name: "Apply GitOps Root App (App of Apps)"
       shell: |
         kubectl apply -f https://raw.githubusercontent.com/Ama2352/vroom-gitops/main/root-app.yaml
