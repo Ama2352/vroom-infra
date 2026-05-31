@@ -44,6 +44,12 @@ Vagrant.configure("2") do |config|
       ansible.playbook = "/vagrant/ansible/playbooks/argocd.yml"
       ansible.install_mode = "none"
     end
+
+    # Phase 3: Seal Secrets
+    server.vm.provision "seal-secrets", run: "never", type: "ansible_local" do |ansible|
+      ansible.playbook = "/vagrant/ansible/playbooks/seal-secrets.yml"
+      ansible.install_mode = "none"
+    end
   end
 
   # K3S AGENTS

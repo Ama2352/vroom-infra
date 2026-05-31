@@ -42,10 +42,10 @@ kubectl get nodes
 
 | Service | URL |
 |---------|-----|
-| ArgoCD UI | `https://192.168.25.133` |
-| Grafana | `http://192.168.25.133/grafana` |
-| Kargo UI | `https://192.168.25.133:30088` |
-| n8n | `http://192.168.25.133/n8n/` |
+| ArgoCD UI | `https://192.168.242.10` |
+| Grafana | `http://192.168.242.10/grafana` |
+| Kargo UI | `https://192.168.242.10:30088` |
+| n8n | `http://192.168.242.10/n8n/` |
 | Prometheus | `kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090` |
 
 ## Teardown

@@ -53,6 +53,20 @@
         - sealed-secrets
         - argocd
 
+    - name: "Reset stuck Sealed Secrets Helm release if pending"
+      shell: |
+        STATUS=$(helm status sealed-secrets -n sealed-secrets -o json 2>/dev/null \
+          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('status',''))" 2>/dev/null || echo "")
+        if [[ "$STATUS" == pending* ]]; then
+          echo "Resetting stuck Helm release: $STATUS"
+          kubectl get secret -n sealed-secrets -l "owner=helm,name=sealed-secrets" \
+            -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | \
+            xargs -r kubectl delete secret -n sealed-secrets || true
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+
     - name: "Install Sealed Secrets Controller"
       shell: |
         helm upgrade --install sealed-secrets bitnami/sealed-secrets \
@@ -70,6 +84,20 @@
         chmod +x /usr/local/bin/kubeseal
       args:
         creates: /usr/local/bin/kubeseal
+
+    - name: "Reset stuck ArgoCD Helm release if pending"
+      shell: |
+        STATUS=$(helm status argocd -n argocd -o json 2>/dev/null \
+          | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('status',''))" 2>/dev/null || echo "")
+        if [[ "$STATUS" == pending* ]]; then
+          echo "Resetting stuck Helm release: $STATUS"
+          kubectl get secret -n argocd -l "owner=helm,name=argocd" \
+            -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | \
+            xargs -r kubectl delete secret -n argocd || true
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
 
     - name: "Install ArgoCD"
       shell: |
