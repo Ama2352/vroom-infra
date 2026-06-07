@@ -152,8 +152,11 @@
     # Kargo stores CRDs in resources/crds/ (non-standard Helm path), so ArgoCD
     # never installs them automatically. We pre-install them HERE — before the
     # root app is applied — so that ArgoCD can sync vroom-kargo-resources
-    # (AnalysisTemplate, Stage, Warehouse) on the first pass without "no matches
-    # for kind AnalysisTemplate" errors. Runs idempotently on every vagrant up.
+    # (Stage, Warehouse, etc.) on the first pass without CRD-missing errors.
+    # Runs idempotently on every vagrant up.
+    # Note: AnalysisTemplate/AnalysisRun CRDs (argoproj.io) are committed as
+    # raw YAML in platform/argo-rollouts-crds/ and applied directly by
+    # vroom-infrastructure (no child Application, no Helm chart fetch).
 
     - name: "Bootstrap Kargo CRDs before root app (pre-requisite for vroom-kargo-resources sync)"
       shell: |
@@ -164,20 +167,6 @@
         kubectl apply --server-side --force-conflicts \
           -f /tmp/kargo-crd/kargo/resources/crds/
         rm -rf /tmp/kargo-crd
-      changed_when: true
-
-    # Kargo v1.10.3 does NOT bundle Argo Rollouts CRDs — they live in the
-    # non-standard resources/crds/ path which only contains Kargo's own CRDs.
-    # AnalysisTemplate / AnalysisRun (argoproj.io/v1alpha1) must be installed
-    # separately. The argoproj Helm repo is already added above, so we pull
-    # the argo-rollouts chart just for its crds/ directory (no controller pod).
-    - name: "Bootstrap Argo Rollouts CRDs (for Kargo Stage verification)"
-      shell: |
-        helm pull argoproj/argo-rollouts \
-          --untar --untardir /tmp/argo-rollouts-crd
-        kubectl apply --server-side --force-conflicts \
-          -f /tmp/argo-rollouts-crd/argo-rollouts/crds/
-        rm -rf /tmp/argo-rollouts-crd
       changed_when: true
 
     # Kargo's Project admission webhook rejects a Project whose namespace already
