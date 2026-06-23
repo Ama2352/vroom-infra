@@ -15,3 +15,5 @@ k3s-join-command.sh
 .secrets/
 .notes/
 ansible/vars/secrets.yml
+
+tests/

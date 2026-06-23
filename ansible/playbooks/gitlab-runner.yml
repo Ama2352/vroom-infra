@@ -1,0 +1,77 @@
+---
+- name: "Install and Register GitLab Runner on k3s-server"
+  hosts: all
+  connection: local
+  become: yes
+  vars_files:
+    - /vagrant/ansible/vars/secrets.yml
+  vars:
+    gitlab_runner_url:         "https://gitlab.com"
+    gitlab_runner_description: "vroom-k3s-runner"
+    gitlab_runner_tags:        "k3s,deploy,vroom"
+    gitlab_runner_executor:    "shell"
+    gitlab_runner_binary_url:  "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64"
+
+  tasks:
+    - name: "Ensure DNS is robust (force IPv4 nameservers)"
+      shell: |
+        rm -f /etc/resolv.conf
+        echo "nameserver 8.8.8.8"  > /etc/resolv.conf
+        echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+      changed_when: false
+
+    - name: "Download gitlab-runner binary"
+      get_url:
+        url:  "{{ gitlab_runner_binary_url }}"
+        dest: /usr/local/bin/gitlab-runner
+        mode: "0755"
+        force: no  # skip if already present with same size
+
+    - name: "Create gitlab-runner system user"
+      user:
+        name:        gitlab-runner
+        comment:     "GitLab Runner"
+        create_home: yes
+        shell:       /bin/bash
+        system:      yes
+      register: runner_user
+
+    - name: "Install gitlab-runner as a system service"
+      command: >
+        gitlab-runner install
+        --user=gitlab-runner
+        --working-directory=/home/gitlab-runner
+      args:
+        creates: /etc/systemd/system/gitlab-runner.service
+
+    - name: "Check if runner is already registered"
+      stat:
+        path: /etc/gitlab-runner/config.toml
+      register: runner_config
+
+    - name: "Register gitlab-runner with GitLab"
+      command: >
+        gitlab-runner register
+        --non-interactive
+        --url {{ gitlab_runner_url }}
+        --token {{ gitlab_runner_token }}
+        --executor {{ gitlab_runner_executor }}
+        --description {{ gitlab_runner_description }}
+        --tag-list {{ gitlab_runner_tags }}
+      when: not runner_config.stat.exists or runner_config.stat.size == 0
+
+    - name: "Enable and start gitlab-runner service"
+      systemd:
+        name:    gitlab-runner
+        state:   started
+        enabled: yes
+        daemon_reload: yes
+
+    - name: "Verify gitlab-runner is online"
+      command: gitlab-runner status
+      changed_when: false
+      register: runner_status
+
+    - name: "Show runner status"
+      debug:
+        msg: "{{ runner_status.stdout }}"

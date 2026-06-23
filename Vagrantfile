@@ -50,6 +50,11 @@ Vagrant.configure("2") do |config|
       ansible.playbook = "/vagrant/ansible/playbooks/seal-secrets.yml"
       ansible.install_mode = "none"
     end
+
+    server.vm.provision "gitlab-runner", run: "never", type: "ansible_local" do |ansible|
+      ansible.playbook = "/vagrant/ansible/playbooks/gitlab-runner.yml"
+      ansible.install_mode = "none"
+    end
   end
 
   # K3S AGENTS
