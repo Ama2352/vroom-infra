@@ -84,6 +84,13 @@
         --docker-privileged
         --docker-volumes /var/run/docker.sock:/var/run/docker.sock
 
+    - name: "Fix config.toml ownership so service user can read it"
+      file:
+        path:  /etc/gitlab-runner
+        owner: gitlab-runner
+        group: gitlab-runner
+        recurse: yes
+
     - name: "Enable and start gitlab-runner service"
       systemd:
         name:          gitlab-runner
@@ -91,7 +98,7 @@
         enabled:       yes
         daemon_reload: yes
 
-    - name: "Verify gitlab-runner is online"
+    - name: "Verify gitlab-runner service is running"
       command: gitlab-runner status
       changed_when: false
       register: runner_status
@@ -99,3 +106,12 @@
     - name: "Show runner status"
       debug:
         msg: "{{ runner_status.stdout }}"
+
+    - name: "Verify runner token is accepted by GitLab"
+      command: gitlab-runner verify
+      changed_when: false
+      register: runner_verify
+
+    - name: "Show verify result"
+      debug:
+        msg: "{{ runner_verify.stderr }}"
