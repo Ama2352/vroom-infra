@@ -9,8 +9,9 @@
     gitlab_runner_url:         "https://gitlab.com"
     gitlab_runner_description: "vroom-k3s-runner"
     gitlab_runner_tags:        "k3s,deploy,vroom"
-    gitlab_runner_executor:    "shell"
-    gitlab_runner_binary_url:  "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64"
+    gitlab_runner_executor:        "docker"
+    gitlab_runner_default_image:   "docker:24.0.5"
+    gitlab_runner_binary_url:      "https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64"
 
   tasks:
     - name: "Ensure DNS is robust (force IPv4 nameservers)"
@@ -19,6 +20,24 @@
         echo "nameserver 8.8.8.8"  > /etc/resolv.conf
         echo "nameserver 1.1.1.1" >> /etc/resolv.conf
       changed_when: false
+
+    - name: "Install Docker"
+      shell: |
+        curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: "Add gitlab-runner to docker group"
+      user:
+        name:   gitlab-runner
+        groups: docker
+        append: yes
+
+    - name: "Enable and start Docker"
+      systemd:
+        name:    docker
+        state:   started
+        enabled: yes
 
     - name: "Download gitlab-runner binary"
       get_url:
@@ -44,27 +63,32 @@
       args:
         creates: /etc/systemd/system/gitlab-runner.service
 
-    - name: "Check if runner is already registered"
-      stat:
+    - name: "Unregister all existing runners (clean slate before re-registering)"
+      command: gitlab-runner unregister --all-runners
+      ignore_errors: yes
+
+    - name: "Remove stale config.toml so registration always runs fresh"
+      file:
         path: /etc/gitlab-runner/config.toml
-      register: runner_config
+        state: absent
 
     - name: "Register gitlab-runner with GitLab"
       command: >
         gitlab-runner register
         --non-interactive
-        --url {{ gitlab_runner_url }}
-        --token {{ gitlab_runner_token }}
-        --executor {{ gitlab_runner_executor }}
-        --description {{ gitlab_runner_description }}
-        --tag-list {{ gitlab_runner_tags }}
-      when: not runner_config.stat.exists or runner_config.stat.size == 0
+        --url "{{ gitlab_runner_url }}"
+        --token "{{ gitlab_runner_token }}"
+        --executor "{{ gitlab_runner_executor }}"
+        --description "{{ gitlab_runner_description }}"
+        --docker-image "{{ gitlab_runner_default_image }}"
+        --docker-privileged
+        --docker-volumes /var/run/docker.sock:/var/run/docker.sock
 
     - name: "Enable and start gitlab-runner service"
       systemd:
-        name:    gitlab-runner
-        state:   started
-        enabled: yes
+        name:          gitlab-runner
+        state:         restarted
+        enabled:       yes
         daemon_reload: yes
 
     - name: "Verify gitlab-runner is online"
