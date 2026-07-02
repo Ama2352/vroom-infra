@@ -1,6 +1,6 @@
 # Kargo CLI Guide (VM-Based)
 
-This guide explains how to install and use the Kargo CLI inside the `k3s-server` VM. The CLI version must match the Kargo Helm chart version deployed in the cluster (`v1.10.3` — see `vroom-gitops/infrastructure/kargo/kargo-chart.yaml`).
+This guide explains how to install and use the Kargo CLI inside the `k3s-server` VM. The CLI version must match the Kargo Helm chart version deployed in the cluster (`v1.10.3` — see `vroom-gitops/platform/kargo-chart/kargo-chart.yaml`).
 
 ---
 
