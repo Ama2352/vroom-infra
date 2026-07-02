@@ -1,7 +1,5 @@
 # vroom-infra
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 Vagrant + Ansible provisioning for the **Vroom** K3s cluster. Declares three VMs that assemble into a K3s cluster and bootstraps ArgoCD — from there, GitOps takes over and ArgoCD deploys everything else from [vroom-gitops](https://github.com/Ama2352/vroom-gitops).
 
 Part of a three-repo setup:
@@ -76,11 +74,8 @@ vroom-infra/
 │   ├── apply-sealed-secrets.ps1  Windows fallback — apply pre-sealed secrets directly
 │   ├── install-kargo-cli.sh      Installs the Kargo CLI inside a VM, version-pinned to the Helm chart
 │   └── setup-ngrok.sh            Expose cluster port for external testing
-├── secrets/
-│   └── raw-template.yaml       Reference template for adding new SealedSecret entries
-├── LICENSE
-└── docs/
-    └── KARGO_CLI_GUIDE.md      Kargo CLI installation, command reference, and troubleshooting
+└── secrets/
+    └── raw-template.yaml       Reference template for adding new SealedSecret entries
 ```
 
 ---
@@ -149,9 +144,3 @@ kubectl get nodes
 | Kargo UI | `https://192.168.242.10:30088` |
 | n8n | `http://192.168.25.139:30078/` (NodePort — sub-path routing via Traefik is broken due to Vite's absolute asset paths) |
 | Prometheus | `kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090` |
-
----
-
-## Documentation
-
-- [Kargo CLI reference](docs/KARGO_CLI_GUIDE.md) — installation, command reference, verification troubleshooting
