@@ -1,5 +1,7 @@
 # vroom-infra
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Vagrant + Ansible provisioning for the **Vroom** K3s cluster. Declares three VMs that assemble into a K3s cluster and bootstraps ArgoCD — from there, GitOps takes over and ArgoCD deploys everything else from [vroom-gitops](https://github.com/Ama2352/vroom-gitops).
 
 Part of a three-repo setup:
@@ -28,7 +30,7 @@ Vagrant's `ansible_local` provisioner is used so the Windows host does not need 
 
 ```
 vagrant up
-  ├── k3s-server VM starts
+  ├── k3s-server VM starts (Ubuntu 22.04)
   │     └── k3s-server.yml    Install K3s server; write join script to /vagrant/
   ├── k3s-agent-1 VM starts
   │     └── k3s-agent.yml     Wait for join script; join cluster
@@ -72,19 +74,20 @@ vroom-infra/
 │       └── secrets.yml.example Fill in values before running seal-secrets.yml
 ├── scripts/
 │   ├── apply-sealed-secrets.ps1  Windows fallback — apply pre-sealed secrets directly
+│   ├── install-kargo-cli.sh      Installs the Kargo CLI inside a VM, version-pinned to the Helm chart
 │   └── setup-ngrok.sh            Expose cluster port for external testing
 ├── secrets/
 │   └── raw-template.yaml       Reference template for adding new SealedSecret entries
+├── LICENSE
 └── docs/
-    ├── provisioning.md         Step-by-step setup, access, teardown
-    └── KARGO_CLI_GUIDE.md      Kargo CLI installation and stage management reference
+    └── KARGO_CLI_GUIDE.md      Kargo CLI installation, command reference, and troubleshooting
 ```
 
 ---
 
 ## Provision the cluster
 
-**Prerequisites:** VMware Desktop (Workstation or Fusion) + [vagrant-vmware-desktop plugin](https://developer.hashicorp.com/vagrant/docs/providers/vmware).
+**Prerequisites:** VMware Desktop (Workstation or Fusion) + [vagrant-vmware-desktop plugin](https://developer.hashicorp.com/vagrant/docs/providers/vmware), 12 GB RAM free on the host.
 
 ```bash
 # 1. Fill in plaintext secret values (gitignored)
@@ -95,12 +98,24 @@ cp ansible/vars/secrets.yml.example ansible/vars/secrets.yml
 vagrant up
 ```
 
+Vagrant automatically:
+1. Creates 3 VMs with Ubuntu 22.04
+2. Runs `k3s-server.yml` on the server (installs K3s, writes join token)
+3. Runs `k3s-agent.yml` on both agents (joins the cluster)
+4. After the second agent joins, triggers `argocd.yml` on the server (installs ArgoCD, applies `root-app.yaml`)
+
 To re-run a single playbook after provisioning:
 
 ```bash
 vagrant ssh k3s-server
 ansible-playbook /vagrant/ansible/playbooks/k3s-server.yml --connection=local
 ansible-playbook /vagrant/ansible/playbooks/argocd.yml --connection=local
+```
+
+Teardown:
+
+```bash
+vagrant destroy -f
 ```
 
 ---
@@ -132,12 +147,11 @@ kubectl get nodes
 | ArgoCD UI | `https://192.168.242.10` |
 | Grafana | `http://192.168.242.10/grafana` |
 | Kargo UI | `https://192.168.242.10:30088` |
-| n8n | `http://192.168.242.10/n8n/` |
+| n8n | `http://192.168.25.139:30078/` (NodePort — sub-path routing via Traefik is broken due to Vite's absolute asset paths) |
 | Prometheus | `kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090` |
 
 ---
 
 ## Documentation
 
-- [Provisioning walkthrough](docs/provisioning.md) — prerequisites, first-time setup, teardown
-- [Kargo CLI reference](docs/KARGO_CLI_GUIDE.md) — stage management, freight inspection
+- [Kargo CLI reference](docs/KARGO_CLI_GUIDE.md) — installation, command reference, verification troubleshooting
