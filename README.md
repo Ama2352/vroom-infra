@@ -1,14 +1,44 @@
 # vroom-infra
 
-Vagrant + Ansible provisioning for the **Vroom** K3s cluster. Declares three VMs that assemble into a K3s cluster and bootstraps ArgoCD — from there, GitOps takes over and ArgoCD deploys everything else from [vroom-gitops](https://github.com/Ama2352/vroom-gitops).
+## About Vroom
 
-Part of a three-repo setup:
+**Vroom** is a cloud-native MVP built to explore the full DevOps lifecycle — CI/CD, GitOps, progressive delivery, observability, and AI-assisted incident response — under a hard **12 GB RAM** budget across 3 VMs, running on **K3s** instead of full Kubernetes.
+
+The ride-hailing domain (passengers, drivers, trip matching) is a realistic placeholder application — enough business logic to justify real microservices patterns (event-driven architecture, sagas, the outbox pattern). The actual subject of this project is the platform built around it: how the app is shipped, deployed, observed, and kept alive.
+
+This is a 3-repo GitOps setup, each repo with a single responsibility:
 
 | Repo | Responsibility |
-|------|---------------|
-| [vroom-services](https://github.com/Ama2352/vroom-services) | Application source code + CI pipeline |
-| [vroom-gitops](https://github.com/Ama2352/vroom-gitops) | Cluster manifests — ArgoCD reads and reconciles this |
-| **vroom-infra** (this repo) | Vagrant + Ansible K3s provisioning |
+|---|---|
+| [vroom-services](https://github.com/Ama2352/vroom-services) | Go microservices + React frontend + CI pipeline |
+| [vroom-gitops](https://github.com/Ama2352/vroom-gitops) | Kustomize + ArgoCD + Kargo — desired cluster state |
+| **vroom-infra** (this repo) | Vagrant + Ansible — K3s cluster bootstrap |
+
+## This Repo
+
+Provisions the underlying K3s cluster the rest of the platform runs on — Vagrant VMs + Ansible playbooks, treated as immutable infrastructure. `vagrant up` produces a running cluster with ArgoCD already bootstrapped; from there, GitOps ([vroom-gitops](https://github.com/Ama2352/vroom-gitops)) takes over.
+
+---
+
+## Tech Stack
+
+| Category | Technology |
+|---|---|
+| Virtualization | Vagrant + VMware Desktop provider (`bento/ubuntu-22.04`) |
+| Provisioning | Ansible (`ansible_local`, no SSH key management between VMs) |
+| Orchestration | K3s (lightweight Kubernetes) |
+| Bootstrap | ArgoCD + Sealed Secrets controller (installed via Ansible, then GitOps takes over) |
+| Secrets | Sealed Secrets (`kubeseal`), rendered from Jinja2 templates |
+
+---
+
+## Key Features
+
+- Immutable infrastructure — `vagrant destroy && vagrant up` reproduces a running cluster with no manual `kubectl` steps
+- K3s chosen for its ~512 MB control-plane footprint vs ~2 GB for kubeadm, under a 12 GB total budget
+- `ansible_local` — each VM provisions itself; no SSH key distribution needed from the host
+- Fully automated bootstrap chain: k3s-server → agents join → ArgoCD + Sealed Secrets install → `root-app.yaml` applied, unattended
+- One-command secret sealing (`seal-secrets.yml`) pushes encrypted manifests straight to vroom-gitops
 
 ---
 
