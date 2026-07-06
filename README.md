@@ -10,8 +10,8 @@ This is a 3-repo GitOps setup, each repo with a single responsibility:
 
 | Repo | Responsibility |
 |---|---|
-| [vroom-services](https://github.com/Ama2352/vroom-services) | Go microservices + React frontend + CI pipeline |
-| [vroom-gitops](https://github.com/Ama2352/vroom-gitops) | Kustomize + ArgoCD + Kargo — desired cluster state |
+| [vroom-services](https://github.com/Ama2352/vroom-services) | Go microservices + Python incident agent + React frontend + CI pipeline |
+| [vroom-gitops](https://github.com/Ama2352/vroom-gitops) | Kustomize + ArgoCD + Kargo — CD pipeline environment |
 | **vroom-infra** (this repo) | Vagrant + Ansible — K3s cluster bootstrap |
 
 ## This Repo
